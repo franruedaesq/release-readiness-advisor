@@ -2,7 +2,7 @@ version: "3.8"
 
 services:
   chromadb:
-    image: chromadb/chroma:0.5.3
+    image: chromadb/chroma:1.0.17.dev4
     container_name: chromadb
     ports:
       - "8000:8000"
@@ -32,6 +32,12 @@ services:
       - ./config/grafana-datasources.yml:/etc/grafana/provisioning/datasources/datasources.yml
     depends_on:
       - prometheus
+
+  pushgateway:
+    image: prom/pushgateway:v1.8.0
+    container_name: pushgateway
+    ports:
+      - "9091:9091"
 
 volumes:
   chroma_data:

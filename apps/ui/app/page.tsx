@@ -1,95 +1,88 @@
-import Image from "next/image";
-import styles from "./page.module.css";
+"use client";
 
-export default function Home() {
+import { useState } from "react";
+import axios from "axios";
+import ReactMarkdown from "react-markdown";
+
+export default function HomePage() {
+  const [isLoading, setIsLoading] = useState(false);
+  const [report, setReport] = useState("");
+  const [error, setError] = useState("");
+
+  const handleAnalyzeClick = async () => {
+    setIsLoading(true);
+    setReport("");
+    setError("");
+
+    try {
+      // The backend is running on port 3002
+      const response = await axios.post(
+        "http://localhost:3002/api/analysis/run"
+      );
+      setReport(response.data.report);
+    } catch (err) {
+      console.error("Error fetching analysis report:", err);
+      setError(
+        "Failed to fetch analysis report. Is the backend server running?"
+      );
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   return (
-    <div className={styles.page}>
-      <main className={styles.main}>
-        <Image
-          className={styles.logo}
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol>
-          <li>
-            Get started by editing <code>app/page.tsx</code>.
-          </li>
-          <li>Save and see your changes instantly.</li>
-        </ol>
+    <main className="flex min-h-screen flex-col items-center p-12 bg-gray-50 font-sans">
+      <div className="w-full max-w-4xl">
+        <header className="text-center mb-10">
+          <h1 className="text-4xl font-bold text-gray-800">
+            Release Readiness Advisor
+          </h1>
+          <p className="text-lg text-gray-600 mt-2">
+            An AI-driven agent to assess release risk and generate deployment
+            plans.
+          </p>
+        </header>
 
-        <div className={styles.ctas}>
-          <a
-            className={styles.primary}
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+        <div className="bg-white p-6 rounded-lg shadow-md border border-gray-200">
+          <button
+            onClick={handleAnalyzeClick}
+            disabled={isLoading}
+            className="w-full px-4 py-3 bg-blue-600 text-white font-semibold rounded-lg shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors duration-300"
           >
-            <Image
-              className={styles.logo}
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-            className={styles.secondary}
-          >
-            Read our docs
-          </a>
+            {isLoading ? "Analyzing..." : "Analyze Last Release"}
+          </button>
         </div>
-      </main>
-      <footer className={styles.footer}>
-        <a
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
-    </div>
+
+        {error && (
+          <div className="mt-6 p-4 bg-red-100 text-red-700 border border-red-300 rounded-lg">
+            <p className="font-bold">An Error Occurred</p>
+            <p>{error}</p>
+          </div>
+        )}
+
+        {report && (
+          <div className="mt-8 bg-white rounded-lg shadow-lg border border-gray-200">
+            <div className="p-6 border-b border-gray-200">
+              <h2 className="text-2xl font-semibold text-gray-800">
+                Analysis Report
+              </h2>
+            </div>
+            <article className="prose max-w-none p-6">
+              {/* The react-markdown library renders the report */}
+              <ReactMarkdown>{report}</ReactMarkdown>
+            </article>
+          </div>
+        )}
+
+        {isLoading && (
+          <div className="mt-8 text-center">
+            <div className="inline-block animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-600"></div>
+            <p className="mt-4 text-gray-600">
+              Fetching artifacts and running analysis... Please wait.
+            </p>
+          </div>
+        )}
+      </div>
+    </main>
   );
 }

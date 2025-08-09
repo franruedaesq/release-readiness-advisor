@@ -6,7 +6,13 @@ scrape_configs:
     static_configs:
       - targets: ["localhost:9090"]
 
-  # We will add our NestJS backend here in a later phase
-  # - job_name: 'advisor_backend'
-  #   static_configs:
-  #     - targets: ['host.docker.internal:3001'] # For backend running locally
+  - job_name: "advisor_backend"
+    static_configs:
+      # Use this special hostname to allow the Docker container
+      # to connect to a service running on your host machine.
+      - targets: ["host.docker.internal:3002"]
+
+  - job_name: "pushgateway"
+    honor_labels: true # Important: allows jobs to set their own labels
+    static_configs:
+      - targets: ["pushgateway:9091"]
