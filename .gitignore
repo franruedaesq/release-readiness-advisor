@@ -1,0 +1,94 @@
+# ─────────────────────────────
+# Node.js & TypeScript
+# ─────────────────────────────
+node_modules/
+dist/
+build/
+tmp/
+temp/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+package-lock.json
+yarn.lock
+*.tsbuildinfo
+
+# Ignore local environment files
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# ─────────────────────────────
+# Logs
+# ─────────────────────────────
+logs
+*.log
+*.log.*
+log.txt
+log-*.txt
+
+# ─────────────────────────────
+# Docker
+# ─────────────────────────────
+# Ignore Docker build artifacts
+**/.dockerignore
+docker-compose.override.yml
+.docker/
+.docker-build/
+
+# Ignore volumes or bind mounts if stored locally
+docker-volumes/
+
+# ─────────────────────────────
+# Terraform
+# ─────────────────────────────
+*.tfstate
+*.tfstate.*
+crash.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+
+.terraform/
+.terraform.lock.hcl
+.terraform.tfstate.backup
+
+# Ignore Terraform plan outputs
+*.plan
+
+# ─────────────────────────────
+# OS & Editor Files
+# ─────────────────────────────
+.DS_Store
+Thumbs.db
+ehthumbs.db
+Icon?
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# ─────────────────────────────
+# Misc
+# ─────────────────────────────
+# Ignore test coverage
+coverage/
+.nyc_output/
+
+# Ignore compiled scripts or binaries
+*.out
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Ignore archives
+*.zip
+*.tar
+*.gz
+*.bz2
+*.7z

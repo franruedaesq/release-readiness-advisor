@@ -1,0 +1,12 @@
+global:
+  scrape_interval: 15s
+
+scrape_configs:
+  - job_name: "prometheus"
+    static_configs:
+      - targets: ["localhost:9090"]
+
+  # We will add our NestJS backend here in a later phase
+  # - job_name: 'advisor_backend'
+  #   static_configs:
+  #     - targets: ['host.docker.internal:3001'] # For backend running locally
