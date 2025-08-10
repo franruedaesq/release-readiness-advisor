@@ -253,4 +253,33 @@ export class IntelService {
       metadatas: documents.map((d) => d.metadata),
     });
   }
+
+  // Dentro de la clase IntelService
+  public async runIngestion(): Promise<{
+    success: boolean;
+    runId?: number;
+    message?: string;
+  }> {
+    this.logger.log('Running data ingestion...');
+    const collection = await this.chroma.getOrCreateCollection({
+      name: 'release_artifacts',
+      embeddingFunction: this.embeddingFunction,
+    });
+
+    const workflowRun = await this.getLatestSuccessfulRun();
+    if (!workflowRun) {
+      return { success: false, message: 'No successful workflow run found.' };
+    }
+
+    const docs = await this.downloadAndProcessArtifacts(workflowRun.id);
+    if (docs.length === 0) {
+      return {
+        success: false,
+        message: 'No artifacts processed from workflow run.',
+      };
+    }
+
+    await this.vectorizeAndStore(collection, docs);
+    return { success: true, runId: workflowRun.id };
+  }
 }
