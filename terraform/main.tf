@@ -211,8 +211,10 @@ resource "aws_iam_role" "github_actions_role" {
         Action = "sts:AssumeRoleWithWebIdentity"
         Condition = {
           StringEquals = {
-            # This ensures only workflows from your repository can assume this role
-            "token.actions.githubusercontent.com:sub" : "repo:franruedaesq/release-readiness-advisor:*"
+            "token.actions.githubusercontent.com:aud" = "sts.amazonaws.com"
+          },
+          StringLike = {
+            "token.actions.githubusercontent.com:sub" = "repo:franruedaesq/release-readiness-advisor:*"
           }
         }
       }
