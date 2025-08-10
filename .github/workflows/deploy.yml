@@ -56,6 +56,15 @@ jobs:
           role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
           aws-region: ${{ secrets.AWS_REGION }}
 
+      - name: Debug OIDC Token
+        run: |
+          echo "Decoding OIDC Token to see the 'sub' claim..."
+          OIDC_TOKEN_PAYLOAD=$(echo $ACTIONS_ID_TOKEN_REQUEST_TOKEN | cut -d. -f2)
+          DECODED_PAYLOAD=$(echo $OIDC_TOKEN_PAYLOAD | base64 --decode)
+          echo "OIDC Payload: $DECODED_PAYLOAD"
+          JWT_SUBJECT=$(echo $DECODED_PAYLOAD | jq -r .sub)
+          echo "✅ The EXACT 'sub' claim sent to AWS is: $JWT_SUBJECT"
+
       - name: Terraform Init
         working-directory: ./terraform
         run: terraform init
