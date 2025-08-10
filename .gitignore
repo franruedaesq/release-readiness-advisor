@@ -92,3 +92,5 @@ coverage/
 *.gz
 *.bz2
 *.7z
+
+terraform/release-advisor-key.pem

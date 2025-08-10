@@ -12,3 +12,8 @@ output "iam_role_arn" {
   description = "The ARN of the IAM role for GitHub Actions"
   value       = aws_iam_role.github_actions_role.arn
 }
+
+output "ec2_public_ip" {
+  description = "The public IP address of the EC2 instance"
+  value       = aws_instance.app_server.public_ip
+}
