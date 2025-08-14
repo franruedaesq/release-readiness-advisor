@@ -132,7 +132,21 @@ jobs:
           target: "/home/ubuntu/"
           overwrite: true
 
-      - name: Copy config/ to EC2
+      - name: Prepare/clean config dir on EC2
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ steps.tf.outputs.ip }}
+          username: ubuntu
+          key: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
+          script_stop: true
+          script: |
+            set -euo pipefail
+            # Elimina por completo el config previo (por si hay archivos/dirs mal creados)
+            sudo rm -rf /home/ubuntu/config
+            mkdir -p /home/ubuntu/config
+            sudo chown -R ubuntu:ubuntu /home/ubuntu/config
+
+      - name: Copy config/ to EC2 (clean upload)
         uses: appleboy/scp-action@v0.1.7
         with:
           host: ${{ steps.tf.outputs.ip }}
@@ -142,6 +156,7 @@ jobs:
           target: "/home/ubuntu/config/"
           overwrite: true
           strip_components: 1
+          rm: true
 
       - name: Deploy on EC2 via SSH
         uses: appleboy/ssh-action@v1.0.3
