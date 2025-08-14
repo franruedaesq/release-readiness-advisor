@@ -112,11 +112,11 @@ resource "aws_security_group" "release_advisor_sg" {
 
 # 4. The EC2 Instance itself
 resource "aws_instance" "app_server" {
-  ami             = "ami-020cba7c55df1f615" # Ubuntu 22.04 LTS for us-east-1
-  instance_type   = "t3.medium"             # Has enough memory for our stack
-  key_name        = aws_key_pair.kp.key_name
-  security_groups = [aws_security_group.release_advisor_sg.name]
-
+  ami                  = "ami-020cba7c55df1f615" # Ubuntu 22.04 LTS for us-east-1
+  instance_type        = "t3.medium"             # Has enough memory for our stack
+  key_name             = aws_key_pair.kp.key_name
+  security_groups      = [aws_security_group.release_advisor_sg.name]
+  iam_instance_profile = aws_iam_instance_profile.ec2_profile.name
   # Startup script to install Docker and Docker Compose
   user_data = <<-EOF
               #!/bin/bash
@@ -298,4 +298,26 @@ resource "aws_iam_role" "github_actions_role" {
 resource "aws_iam_role_policy_attachment" "attach_policy" {
   role       = aws_iam_role.github_actions_role.name
   policy_arn = aws_iam_policy.github_actions_policy.arn
+}
+
+resource "aws_iam_role" "ec2_role" {
+  name = "release-advisor-ec2-role"
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17",
+    Statement = [{
+      Effect    = "Allow",
+      Principal = { Service = "ec2.amazonaws.com" },
+      Action    = "sts:AssumeRole"
+    }]
+  })
+}
+
+resource "aws_iam_role_policy_attachment" "ec2_ecr_read" {
+  role       = aws_iam_role.ec2_role.name
+  policy_arn = "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly"
+}
+
+resource "aws_iam_instance_profile" "ec2_profile" {
+  name = "release-advisor-ec2-profile"
+  role = aws_iam_role.ec2_role.name
 }

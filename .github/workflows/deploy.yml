@@ -124,16 +124,16 @@ jobs:
           username: ubuntu
           key: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
           script_stop: true
-          # Pass the runner's AWS env vars to the remote session
+          # Pass runner creds into the remote session so awscli can auth to ECR
           envs: AWS_ACCESS_KEY_ID,AWS_SECRET_ACCESS_KEY,AWS_SESSION_TOKEN,AWS_REGION,AWS_DEFAULT_REGION
           script: |
             set -euo pipefail
 
-            # Normalize REGION
+            # Normalize region (prefer AWS_REGION, then AWS_DEFAULT_REGION, then secret)
             export AWS_REGION="${AWS_REGION:-${AWS_DEFAULT_REGION:-${{ secrets.AWS_REGION }}}}"
             export AWS_DEFAULT_REGION="$AWS_REGION"
 
-            # --- AWS CLI v2 (Ubuntu 24.04) ---
+            # --- Install AWS CLI v2 (Ubuntu 24.04 has no apt awscli) ---
             if ! command -v aws >/dev/null 2>&1; then
               sudo apt-get update -y
               sudo apt-get install -y curl unzip
@@ -147,4 +147,34 @@ jobs:
                 exit 1
               fi
               TMP="$(mktemp -d)"
-              curl -fsSL "$URL" -o "$TMP/awsc
+              curl -fsSL "$URL" -o "$TMP/awscliv2.zip"
+              unzip -q "$TMP/awscliv2.zip" -d "$TMP"
+              sudo "$TMP/aws/install" --update
+              rm -rf "$TMP"
+            fi
+
+            # --- Ensure Docker Compose plugin ---
+            if ! docker compose version >/dev/null 2>&1; then
+              sudo apt-get update -y
+              sudo apt-get install -y docker-compose-plugin
+            fi
+
+            # Quick sanity
+            aws --version || true
+            docker --version || true
+            docker compose version || true
+
+            # --- ECR login (uses the env creds passed above) ---
+            aws ecr get-login-password --region "$AWS_REGION" \
+              | docker login --username AWS --password-stdin "${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com"
+
+            # --- Deploy ---
+            cd /home/ubuntu
+            # If you uploaded docker-compose.prod.yml via SCP, rename it to docker-compose.yml
+            if [ -f docker-compose.prod.yml ]; then
+              mv -f docker-compose.prod.yml docker-compose.yml
+            fi
+            sudo chown ubuntu:ubuntu docker-compose.yml || true
+
+            docker compose pull
+            docker compose up -d --force-recreate
