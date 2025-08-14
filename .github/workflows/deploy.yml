@@ -105,7 +105,23 @@ jobs:
           # Write exactly one KEY=VALUE line
           echo "ip=$ip" >> "$GITHUB_OUTPUT"
 
-      # Copy docker-compose file to the instance
+      - name: Prepare dirs on EC2
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ steps.tf.outputs.ip }}
+          username: ubuntu
+          key: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
+          script_stop: true
+          script: |
+            set -euo pipefail
+            # Asegura ownership correcto del home
+            sudo chown -R ubuntu:ubuntu /home/ubuntu
+            # Si /home/ubuntu/config era un archivo, bórralo
+            if [ -f /home/ubuntu/config ]; then sudo rm -f /home/ubuntu/config; fi
+            # Crea el directorio config con permisos de ubuntu
+            mkdir -p /home/ubuntu/config
+            chown -R ubuntu:ubuntu /home/ubuntu/config
+
       - name: Copy docker-compose to EC2
         uses: appleboy/scp-action@v0.1.7
         with:
@@ -125,6 +141,7 @@ jobs:
           source: "config/*"
           target: "/home/ubuntu/config/"
           overwrite: true
+          strip_components: 1
 
       - name: Deploy on EC2 via SSH
         uses: appleboy/ssh-action@v1.0.3
@@ -145,12 +162,11 @@ jobs:
           script: |
             set -euo pipefail
 
-            # --- Normalize region/account ---
             export AWS_REGION="${AWS_REGION:-${AWS_DEFAULT_REGION:-${{ secrets.AWS_REGION }}}}"
             export AWS_DEFAULT_REGION="$AWS_REGION"
             export AWS_ACCOUNT_ID="${AWS_ACCOUNT_ID:-${{ secrets.AWS_ACCOUNT_ID }}}"
 
-            # --- AWS CLI v2 (Ubuntu 24.04) ---
+            # AWS CLI v2
             if ! command -v aws >/dev/null 2>&1; then
               sudo apt-get update -y
               sudo apt-get install -y curl unzip
@@ -162,72 +178,41 @@ jobs:
               else
                 echo "Unsupported arch: $ARCH" >&2; exit 1
               fi
-              TMP="$(mktemp -d)"
-              curl -fsSL "$URL" -o "$TMP/awscliv2.zip"
+              TMP="$(mktemp -d)"; curl -fsSL "$URL" -o "$TMP/awscliv2.zip"
               unzip -q "$TMP/awscliv2.zip" -d "$TMP"
               sudo "$TMP/aws/install" --update
               rm -rf "$TMP"
             fi
 
-            # --- Ensure Docker Compose plugin ---
+            # Docker Compose plugin
             if ! docker compose version >/dev/null 2>&1; then
               sudo apt-get update -y
               sudo apt-get install -y docker-compose-plugin
             fi
 
-            # --- ECR login ---
+            # Login ECR
             aws ecr get-login-password --region "$AWS_REGION" \
               | docker login --username AWS --password-stdin "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
 
             cd /home/ubuntu
 
-            # --- Clean up earlier bad state (dir named docker-compose.yml) ---
+            # Si quedó un directorio con ese nombre, límpialo
             if [ -d /home/ubuntu/docker-compose.yml ]; then
               sudo rm -rf /home/ubuntu/docker-compose.yml
             fi
 
-            # Put compose file in place (assumes you SCP'ed docker-compose.prod.yml earlier)
+            # Deja compose en su nombre final
             if [ -f /home/ubuntu/docker-compose.prod.yml ]; then
               mv -f /home/ubuntu/docker-compose.prod.yml /home/ubuntu/docker-compose.yml
             fi
             sudo chown ubuntu:ubuntu /home/ubuntu/docker-compose.yml || true
 
-            # --- Ensure config files are FILES (not directories) ---
-            mkdir -p /home/ubuntu/config
-            if [ -d /home/ubuntu/config/prometheus.yml ]; then
-              sudo rm -rf /home/ubuntu/config/prometheus.yml
-            fi
-            if [ ! -f /home/ubuntu/config/prometheus.yml ]; then
-              # minimal fallback if copy failed
-              cat >/home/ubuntu/config/prometheus.yml <<'PROM'
-            global:
-              scrape_interval: 15s
-            scrape_configs:
-              - job_name: "prometheus"
-                static_configs:
-                  - targets: ["prometheus:9090"]
-            PROM
-                  fi
+            # Asegura que los archivos de config estén como ARCHIVOS
+            if [ -d /home/ubuntu/config/prometheus.yml ]; then sudo rm -rf /home/ubuntu/config/prometheus.yml; fi
+            if [ -d /home/ubuntu/config/grafana-datasources.yml ]; then sudo rm -rf /home/ubuntu/config/grafana-datasources.yml; fi
 
-                  if [ -d /home/ubuntu/config/grafana-datasources.yml ]; then
-                    sudo rm -rf /home/ubuntu/config/grafana-datasources.yml
-                  fi
-                  if [ ! -f /home/ubuntu/config/grafana-datasources.yml ]; then
-                    # minimal fallback if copy failed
-                    cat >/home/ubuntu/config/grafana-datasources.yml <<'GRAF'
-            apiVersion: 1
-            datasources:
-              - name: Prometheus
-                type: prometheus
-                access: proxy
-                url: http://prometheus:9090
-                isDefault: true
-                editable: true
-            GRAF
-                  fi
-
-                  # --- Compose env for variable expansion ---
-                  cat >/home/ubuntu/.env <<EOF
+            # .env para expansión en compose
+            cat >/home/ubuntu/.env <<EOF
             AWS_ACCOUNT_ID=${AWS_ACCOUNT_ID}
             AWS_REGION=${AWS_REGION}
             OPENAI_API_KEY=${OPENAI_API_KEY:-}
@@ -236,10 +221,9 @@ jobs:
             GITHUB_REPO=${GITHUB_REPO:-}
             EOF
 
-                  echo "Using image: ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/release-readiness-advisor/backend:latest"
-                  ls -l /home/ubuntu/config || true
-                  file /home/ubuntu/config/prometheus.yml || true
+            echo "Using image: ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/release-readiness-advisor/backend:latest"
+            ls -l /home/ubuntu/config || true
+            file /home/ubuntu/config/prometheus.yml || true
 
-                  # --- Deploy ---
-                  docker compose pull
-                  docker compose up -d --force-recreate --remove-orphans
+            docker compose pull
+            docker compose up -d --force-recreate --remove-orphans
