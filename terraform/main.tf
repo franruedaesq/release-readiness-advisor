@@ -197,6 +197,23 @@ resource "aws_iam_policy" "github_actions_policy" {
           "ecr:PutImage"
         ]
         Resource = aws_ecr_repository.advisor_backend.arn
+      },
+      {
+        Effect = "Allow",
+        Action = [
+          "s3:ListBucket",
+          "s3:GetBucketVersioning"
+        ],
+        Resource = "arn:aws:s3:::release-advisor-terra-state"
+      },
+      {
+        Effect = "Allow",
+        Action = [
+          "s3:GetObject",
+          "s3:PutObject",
+          "s3:DeleteObject"
+        ],
+        Resource = "arn:aws:s3:::release-advisor-terra-state/*"
       }
     ]
   })
