@@ -165,7 +165,6 @@ resource "aws_iam_policy" "github_actions_policy" {
   name        = "GitHubActionsAdvisorPolicy"
   description = "Policy for the Release Readiness Advisor GitHub Actions"
 
-  # The actual permissions
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [
@@ -184,7 +183,13 @@ resource "aws_iam_policy" "github_actions_policy" {
       {
         Effect = "Allow"
         Action = [
-          "ecr:GetAuthorizationToken",
+          "ecr:GetAuthorizationToken"
+        ]
+        Resource = "*"
+      },
+      {
+        Effect = "Allow"
+        Action = [
           "ecr:BatchCheckLayerAvailability",
           "ecr:InitiateLayerUpload",
           "ecr:UploadLayerPart",
@@ -211,10 +216,10 @@ resource "aws_iam_role" "github_actions_role" {
         Action = "sts:AssumeRoleWithWebIdentity"
         Condition = {
           StringEquals = {
-            "token.actions.githubusercontent.com:aud" = "sts.amazonaws.com"
+            "token.actions.githubusercontent.com:aud" : "sts.amazonaws.com"
           },
           StringLike = {
-            "token.actions.githubusercontent.com:sub" = "repo:franruedaesq/release-readiness-advisor:*"
+            "token.actions.githubusercontent.com:sub" : "repo:franruedaesq/release-readiness-advisor:*"
           }
         }
       }
