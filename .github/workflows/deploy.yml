@@ -117,23 +117,30 @@ jobs:
           overwrite: true
 
       # Run remote commands on the instance
+
       - name: Deploy on EC2 via SSH
         uses: appleboy/ssh-action@v1.0.3
+        env: # make these available on the runner
+          AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }} # optional, if your compose uses it
+          AWS_REGION: ${{ secrets.AWS_REGION }}
+          AWS_DEFAULT_REGION: ${{ secrets.AWS_REGION }}
         with:
           host: ${{ steps.tf.outputs.ip }}
           username: ubuntu
           key: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
           script_stop: true
-          # If you still rely on runner creds for ECR, keep these envs; if your EC2 has an instance profile, you can remove them.
-          envs: AWS_ACCESS_KEY_ID,AWS_SECRET_ACCESS_KEY,AWS_SESSION_TOKEN,AWS_REGION,AWS_DEFAULT_REGION
+          # forward the runner envs above into the remote shell
+          envs: AWS_ACCESS_KEY_ID,AWS_SECRET_ACCESS_KEY,AWS_SESSION_TOKEN,AWS_REGION,AWS_DEFAULT_REGION,AWS_ACCOUNT_ID,OPENAI_API_KEY
           script: |
             set -euo pipefail
 
-            # Normalize region (prefer AWS_REGION, then AWS_DEFAULT_REGION, then secret)
+            # ---------- Normalize region & account ----------
             export AWS_REGION="${AWS_REGION:-${AWS_DEFAULT_REGION:-${{ secrets.AWS_REGION }}}}"
             export AWS_DEFAULT_REGION="$AWS_REGION"
+            export AWS_ACCOUNT_ID="${AWS_ACCOUNT_ID:-${{ secrets.AWS_ACCOUNT_ID }}}"
 
-            # --- AWS CLI v2 (Ubuntu 24.04) ---
+            # ---------- AWS CLI v2 (Ubuntu 24.04) ----------
             if ! command -v aws >/dev/null 2>&1; then
               sudo apt-get update -y
               sudo apt-get install -y curl unzip
@@ -153,32 +160,38 @@ jobs:
               rm -rf "$TMP"
             fi
 
-            # --- Ensure Docker Compose plugin ---
+            # ---------- Ensure Docker Compose plugin ----------
             if ! docker compose version >/dev/null 2>&1; then
               sudo apt-get update -y
               sudo apt-get install -y docker-compose-plugin
             fi
 
-            # ECR login (uses env creds if you passed them, or EC2 instance profile if present)
+            # ---------- ECR login ----------
             aws ecr get-login-password --region "$AWS_REGION" \
-              | docker login --username AWS --password-stdin "${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.$AWS_REGION.amazonaws.com"
+              | docker login --username AWS --password-stdin "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
 
             cd /home/ubuntu
 
-            # --- Clean up mistaken directory named 'docker-compose.yml' (from earlier runs) ---
+            # Clean up bad directory from earlier runs
             if [ -d /home/ubuntu/docker-compose.yml ]; then
-              echo "Found directory /home/ubuntu/docker-compose.yml; removing it..."
               sudo rm -rf /home/ubuntu/docker-compose.yml
             fi
 
-            # If we uploaded docker-compose.prod.yml, rename it into place
+            # Put compose file in place
             if [ -f /home/ubuntu/docker-compose.prod.yml ]; then
               mv -f /home/ubuntu/docker-compose.prod.yml /home/ubuntu/docker-compose.yml
             fi
-
             sudo chown ubuntu:ubuntu /home/ubuntu/docker-compose.yml || true
-            ls -l /home/ubuntu/docker-compose.yml
 
-            # Pull & (re)start
+            # ---------- Provide .env for compose variable expansion ----------
+            cat >/home/ubuntu/.env <<EOF
+            AWS_ACCOUNT_ID=${AWS_ACCOUNT_ID}
+            AWS_REGION=${AWS_REGION}
+            OPENAI_API_KEY=${OPENAI_API_KEY:-}
+            EOF
+
+            echo "Using image: ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/release-readiness-advisor/backend:latest"
+
+            # ---------- Deploy ----------
             docker compose pull
             docker compose up -d --force-recreate --remove-orphans
