@@ -124,10 +124,16 @@ jobs:
           username: ubuntu
           key: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
           script_stop: true
+          # Pass the runner's AWS env vars to the remote session
+          envs: AWS_ACCESS_KEY_ID,AWS_SECRET_ACCESS_KEY,AWS_SESSION_TOKEN,AWS_REGION,AWS_DEFAULT_REGION
           script: |
             set -euo pipefail
 
-            # --- AWS CLI v2 (Ubuntu 24.04 no tiene 'apt install awscli') ---
+            # Normalize REGION
+            export AWS_REGION="${AWS_REGION:-${AWS_DEFAULT_REGION:-${{ secrets.AWS_REGION }}}}"
+            export AWS_DEFAULT_REGION="$AWS_REGION"
+
+            # --- AWS CLI v2 (Ubuntu 24.04) ---
             if ! command -v aws >/dev/null 2>&1; then
               sudo apt-get update -y
               sudo apt-get install -y curl unzip
@@ -137,33 +143,8 @@ jobs:
               elif [ "$ARCH" = "aarch64" ] || [ "$ARCH" = "arm64" ]; then
                 URL="https://awscli.amazonaws.com/awscli-exe-linux-aarch64.zip"
               else
-                echo "Arquitectura no soportada: $ARCH" >&2
+                echo "Unsupported arch: $ARCH" >&2
                 exit 1
               fi
               TMP="$(mktemp -d)"
-              curl -fsSL "$URL" -o "$TMP/awscliv2.zip"
-              unzip -q "$TMP/awscliv2.zip" -d "$TMP"
-              sudo "$TMP/aws/install" --update
-              rm -rf "$TMP"
-            fi
-
-            # --- Asegurar Docker Compose plugin ---
-            if ! docker compose version >/dev/null 2>&1; then
-              sudo apt-get update -y
-              sudo apt-get install -y docker-compose-plugin
-            fi
-
-            # --- Login en ECR (la instancia debe tener IAM con ECR ReadOnly) ---
-            aws ecr get-login-password --region "${{ secrets.AWS_REGION }}" \
-              | docker login --username AWS --password-stdin "${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com"
-
-            # --- Despliegue ---
-            cd /home/ubuntu
-            # Si subiste docker-compose.prod.yml, renómbralo; si ya es docker-compose.yml, no pasa nada
-            if [ -f docker-compose.prod.yml ]; then
-              mv -f docker-compose.prod.yml docker-compose.yml
-            fi
-            sudo chown ubuntu:ubuntu docker-compose.yml || true
-
-            docker compose pull
-            docker compose up -d --force-recreate
+              curl -fsSL "$URL" -o "$TMP/awsc
