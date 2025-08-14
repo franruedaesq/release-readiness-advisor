@@ -160,6 +160,7 @@ data "aws_iam_openid_connect_provider" "github" {
   url = "https://token.actions.githubusercontent.com"
 }
 
+
 resource "aws_iam_policy" "github_actions_policy" {
   name        = "GitHubActionsAdvisorPolicy"
   description = "Policy for the Release Readiness Advisor GitHub Actions"
@@ -167,70 +168,51 @@ resource "aws_iam_policy" "github_actions_policy" {
   policy = jsonencode({
     Version = "2012-10-17",
     Statement = [
-      # ---------- S3: ARTIFACTS BUCKET ----------
+      # ---------- S3: bucket-level ----------
+      # Artifacts bucket: read-all metadata + the puts you configure
       {
         Effect = "Allow",
         Action = [
           "s3:ListBucket",
-          "s3:GetBucketLocation",
-          "s3:GetBucketVersioning",
+          "s3:Get*", # ACL, CORS, Website, Encryption, Replication, etc.
           "s3:PutBucketVersioning",
-          "s3:GetBucketPolicy",
-          "s3:GetBucketAcl",
-          "s3:GetBucketTagging",
-          "s3:PutBucketTagging",
-          "s3:GetPublicAccessBlock",
-          "s3:PutPublicAccessBlock"
+          "s3:PutPublicAccessBlock",
+          "s3:PutBucketTagging"
         ],
         Resource = "arn:aws:s3:::release-advisor-artifacts-${random_pet.suffix.id}"
       },
-      {
-        Effect = "Allow",
-        Action = [
-          "s3:GetObject",
-          "s3:PutObject",
-          "s3:DeleteObject"
-        ],
-        Resource = "arn:aws:s3:::release-advisor-artifacts-${random_pet.suffix.id}/*"
-      },
-
-      # ---------- S3: TERRAFORM STATE BUCKET ----------
+      # Terraform state bucket: read-only at bucket level
       {
         Effect = "Allow",
         Action = [
           "s3:ListBucket",
-          "s3:GetBucketLocation",
-          "s3:GetBucketVersioning",
-          "s3:GetBucketPolicy",
-          "s3:GetBucketAcl",
-          "s3:GetPublicAccessBlock"
+          "s3:Get*"
         ],
         Resource = "arn:aws:s3:::release-advisor-terra-state"
       },
+
+      # ---------- S3: object-level ----------
       {
-        Effect = "Allow",
-        Action = [
-          "s3:GetObject",
-          "s3:PutObject",
-          "s3:DeleteObject"
-        ],
+        Effect   = "Allow",
+        Action   = ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"],
+        Resource = "arn:aws:s3:::release-advisor-artifacts-${random_pet.suffix.id}/*"
+      },
+      {
+        Effect   = "Allow",
+        Action   = ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"],
         Resource = "arn:aws:s3:::release-advisor-terra-state/*"
       },
 
-      # ---------- ECR (push + describe + tags) ----------
-      {
-        Effect   = "Allow",
-        Action   = ["ecr:GetAuthorizationToken"],
-        Resource = "*"
-      },
+      # ---------- ECR ----------
+      { Effect = "Allow", Action = ["ecr:GetAuthorizationToken"], Resource = "*" },
       {
         Effect = "Allow",
         Action = [
           "ecr:CreateRepository",
           "ecr:DescribeRepositories",
           "ecr:DescribeImages",
+          "ecr:GetRepositoryPolicy",
           "ecr:ListTagsForResource",
-          "ecr:SetRepositoryPolicy",
           "ecr:TagResource",
           "ecr:UntagResource",
           "ecr:BatchCheckLayerAvailability",
@@ -242,8 +224,7 @@ resource "aws_iam_policy" "github_actions_policy" {
         Resource = aws_ecr_repository.advisor_backend.arn
       },
 
-      # ---------- EC2 (lecturas amplias + acciones básicas) ----------
-      # Describe* es solo lectura y evita muchos AccessDenied en refresh/plan.
+      # ---------- EC2 ----------
       {
         Effect = "Allow",
         Action = [
@@ -259,26 +240,33 @@ resource "aws_iam_policy" "github_actions_policy" {
         Resource = "*"
       },
 
-      # ---------- IAM (OIDC + leer rol propio + adjuntar policy) ----------
+      # ---------- IAM ----------
+      # Broad reads for refresh/plan + manage role/policy + **policy version ops**
       {
         Effect = "Allow",
         Action = [
-          "iam:ListOpenIDConnectProviders",
-          "iam:GetOpenIDConnectProvider",
-          "iam:GetRole",
+          "iam:Get*",
+          "iam:List*",
           "iam:CreateRole",
           "iam:DeleteRole",
           "iam:AttachRolePolicy",
           "iam:DetachRolePolicy",
           "iam:UpdateAssumeRolePolicy",
           "iam:CreatePolicy",
-          "iam:DeletePolicy"
+          "iam:DeletePolicy",
+          "iam:CreatePolicyVersion",    # needed for updates
+          "iam:DeletePolicyVersion",    # <-- missing one that caused your error
+          "iam:SetDefaultPolicyVersion" # needed to flip default before deletion
         ],
         Resource = "*"
       }
     ]
   })
 }
+
+
+
+
 
 
 # Define the IAM role that GitHub Actions will assume
