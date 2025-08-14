@@ -10,6 +10,8 @@ RUN pnpm install
 
 COPY . .
 
+ENV PATH /app/node_modules/.bin:$PATH
+
 RUN pnpm --filter backend build
 
 FROM node:20-slim
