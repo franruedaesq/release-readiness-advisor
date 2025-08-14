@@ -160,7 +160,6 @@ data "aws_iam_openid_connect_provider" "github" {
   url = "https://token.actions.githubusercontent.com"
 }
 
-# Define the IAM policy granting specific permissions to S3 and ECR
 resource "aws_iam_policy" "github_actions_policy" {
   name        = "GitHubActionsAdvisorPolicy"
   description = "Policy for the Release Readiness Advisor GitHub Actions"
@@ -168,31 +167,57 @@ resource "aws_iam_policy" "github_actions_policy" {
   policy = jsonencode({
     Version = "2012-10-17",
     Statement = [
-      # --- S3: artifacts bucket ---
+      # ---------- S3: ARTIFACTS BUCKET ----------
       {
-        Effect   = "Allow",
-        Action   = ["s3:ListBucket", "s3:GetBucketVersioning", "s3:GetBucketPolicy"],
+        Effect = "Allow",
+        Action = [
+          "s3:ListBucket",
+          "s3:GetBucketLocation",
+          "s3:GetBucketVersioning",
+          "s3:PutBucketVersioning",
+          "s3:GetBucketPolicy",
+          "s3:GetBucketAcl",
+          "s3:GetBucketTagging",
+          "s3:PutBucketTagging",
+          "s3:GetPublicAccessBlock",
+          "s3:PutPublicAccessBlock"
+        ],
         Resource = "arn:aws:s3:::release-advisor-artifacts-${random_pet.suffix.id}"
       },
       {
-        Effect   = "Allow",
-        Action   = ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"],
+        Effect = "Allow",
+        Action = [
+          "s3:GetObject",
+          "s3:PutObject",
+          "s3:DeleteObject"
+        ],
         Resource = "arn:aws:s3:::release-advisor-artifacts-${random_pet.suffix.id}/*"
       },
 
-      # --- S3: terraform state bucket ---
+      # ---------- S3: TERRAFORM STATE BUCKET ----------
       {
-        Effect   = "Allow",
-        Action   = ["s3:ListBucket", "s3:GetBucketVersioning", "s3:GetBucketPolicy"],
+        Effect = "Allow",
+        Action = [
+          "s3:ListBucket",
+          "s3:GetBucketLocation",
+          "s3:GetBucketVersioning",
+          "s3:GetBucketPolicy",
+          "s3:GetBucketAcl",
+          "s3:GetPublicAccessBlock"
+        ],
         Resource = "arn:aws:s3:::release-advisor-terra-state"
       },
       {
-        Effect   = "Allow",
-        Action   = ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"],
+        Effect = "Allow",
+        Action = [
+          "s3:GetObject",
+          "s3:PutObject",
+          "s3:DeleteObject"
+        ],
         Resource = "arn:aws:s3:::release-advisor-terra-state/*"
       },
 
-      # --- ECR (push + describe) ---
+      # ---------- ECR (push + describe + tags) ----------
       {
         Effect   = "Allow",
         Action   = ["ecr:GetAuthorizationToken"],
@@ -201,7 +226,13 @@ resource "aws_iam_policy" "github_actions_policy" {
       {
         Effect = "Allow",
         Action = [
+          "ecr:CreateRepository",
           "ecr:DescribeRepositories",
+          "ecr:DescribeImages",
+          "ecr:ListTagsForResource",
+          "ecr:SetRepositoryPolicy",
+          "ecr:TagResource",
+          "ecr:UntagResource",
           "ecr:BatchCheckLayerAvailability",
           "ecr:InitiateLayerUpload",
           "ecr:UploadLayerPart",
@@ -211,32 +242,30 @@ resource "aws_iam_policy" "github_actions_policy" {
         Resource = aws_ecr_repository.advisor_backend.arn
       },
 
-      # --- EC2 (key pair + security group + describes) ---
+      # ---------- EC2 (lecturas amplias + acciones básicas) ----------
+      # Describe* es solo lectura y evita muchos AccessDenied en refresh/plan.
       {
         Effect = "Allow",
         Action = [
-          "ec2:DescribeKeyPairs",
-          "ec2:CreateKeyPair",
-          "ec2:DeleteKeyPair",
-          "ec2:DescribeSecurityGroups",
-          "ec2:CreateSecurityGroup",
-          "ec2:DeleteSecurityGroup",
-          "ec2:AuthorizeSecurityGroupIngress",
-          "ec2:AuthorizeSecurityGroupEgress",
-          "ec2:RevokeSecurityGroupIngress",
-          "ec2:RevokeSecurityGroupEgress",
-          "ec2:DescribeVpcs",
-          "ec2:DescribeSubnets"
+          "ec2:Describe*",
+          "ec2:RunInstances",
+          "ec2:TerminateInstances",
+          "ec2:StartInstances",
+          "ec2:StopInstances",
+          "ec2:CreateTags",
+          "ec2:DeleteTags",
+          "ec2:ModifyInstanceAttribute"
         ],
         Resource = "*"
       },
 
-      # --- IAM (OIDC data source + crear role/policy que declaras) ---
+      # ---------- IAM (OIDC + leer rol propio + adjuntar policy) ----------
       {
         Effect = "Allow",
         Action = [
           "iam:ListOpenIDConnectProviders",
           "iam:GetOpenIDConnectProvider",
+          "iam:GetRole",
           "iam:CreateRole",
           "iam:DeleteRole",
           "iam:AttachRolePolicy",
@@ -249,8 +278,8 @@ resource "aws_iam_policy" "github_actions_policy" {
       }
     ]
   })
-
 }
+
 
 # Define the IAM role that GitHub Actions will assume
 resource "aws_iam_role" "github_actions_role" {
