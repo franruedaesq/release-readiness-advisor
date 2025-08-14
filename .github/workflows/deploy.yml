@@ -116,31 +116,41 @@ jobs:
           target: "/home/ubuntu/"
           overwrite: true
 
-      # Run remote commands on the instance
+      - name: Copy config/ to EC2
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ steps.tf.outputs.ip }}
+          username: ubuntu
+          key: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
+          source: "config/*"
+          target: "/home/ubuntu/config/"
+          overwrite: true
 
       - name: Deploy on EC2 via SSH
         uses: appleboy/ssh-action@v1.0.3
-        env: # make these available on the runner
+        env:
           AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }} # optional, if your compose uses it
           AWS_REGION: ${{ secrets.AWS_REGION }}
           AWS_DEFAULT_REGION: ${{ secrets.AWS_REGION }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_OWNER: ${{ secrets.GITHUB_OWNER }}
+          GITHUB_REPO: ${{ secrets.GITHUB_REPO }}
         with:
           host: ${{ steps.tf.outputs.ip }}
           username: ubuntu
           key: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
           script_stop: true
-          # forward the runner envs above into the remote shell
-          envs: AWS_ACCESS_KEY_ID,AWS_SECRET_ACCESS_KEY,AWS_SESSION_TOKEN,AWS_REGION,AWS_DEFAULT_REGION,AWS_ACCOUNT_ID,OPENAI_API_KEY
+          envs: AWS_ACCESS_KEY_ID,AWS_SECRET_ACCESS_KEY,AWS_SESSION_TOKEN,AWS_REGION,AWS_DEFAULT_REGION,AWS_ACCOUNT_ID,OPENAI_API_KEY,GITHUB_TOKEN,GITHUB_OWNER,GITHUB_REPO
           script: |
             set -euo pipefail
 
-            # ---------- Normalize region & account ----------
+            # --- Normalize region/account ---
             export AWS_REGION="${AWS_REGION:-${AWS_DEFAULT_REGION:-${{ secrets.AWS_REGION }}}}"
             export AWS_DEFAULT_REGION="$AWS_REGION"
             export AWS_ACCOUNT_ID="${AWS_ACCOUNT_ID:-${{ secrets.AWS_ACCOUNT_ID }}}"
 
-            # ---------- AWS CLI v2 (Ubuntu 24.04) ----------
+            # --- AWS CLI v2 (Ubuntu 24.04) ---
             if ! command -v aws >/dev/null 2>&1; then
               sudo apt-get update -y
               sudo apt-get install -y curl unzip
@@ -150,8 +160,7 @@ jobs:
               elif [ "$ARCH" = "aarch64" ] || [ "$ARCH" = "arm64" ]; then
                 URL="https://awscli.amazonaws.com/awscli-exe-linux-aarch64.zip"
               else
-                echo "Unsupported arch: $ARCH" >&2
-                exit 1
+                echo "Unsupported arch: $ARCH" >&2; exit 1
               fi
               TMP="$(mktemp -d)"
               curl -fsSL "$URL" -o "$TMP/awscliv2.zip"
@@ -160,38 +169,77 @@ jobs:
               rm -rf "$TMP"
             fi
 
-            # ---------- Ensure Docker Compose plugin ----------
+            # --- Ensure Docker Compose plugin ---
             if ! docker compose version >/dev/null 2>&1; then
               sudo apt-get update -y
               sudo apt-get install -y docker-compose-plugin
             fi
 
-            # ---------- ECR login ----------
+            # --- ECR login ---
             aws ecr get-login-password --region "$AWS_REGION" \
               | docker login --username AWS --password-stdin "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
 
             cd /home/ubuntu
 
-            # Clean up bad directory from earlier runs
+            # --- Clean up earlier bad state (dir named docker-compose.yml) ---
             if [ -d /home/ubuntu/docker-compose.yml ]; then
               sudo rm -rf /home/ubuntu/docker-compose.yml
             fi
 
-            # Put compose file in place
+            # Put compose file in place (assumes you SCP'ed docker-compose.prod.yml earlier)
             if [ -f /home/ubuntu/docker-compose.prod.yml ]; then
               mv -f /home/ubuntu/docker-compose.prod.yml /home/ubuntu/docker-compose.yml
             fi
             sudo chown ubuntu:ubuntu /home/ubuntu/docker-compose.yml || true
 
-            # ---------- Provide .env for compose variable expansion ----------
-            cat >/home/ubuntu/.env <<EOF
+            # --- Ensure config files are FILES (not directories) ---
+            mkdir -p /home/ubuntu/config
+            if [ -d /home/ubuntu/config/prometheus.yml ]; then
+              sudo rm -rf /home/ubuntu/config/prometheus.yml
+            fi
+            if [ ! -f /home/ubuntu/config/prometheus.yml ]; then
+              # minimal fallback if copy failed
+              cat >/home/ubuntu/config/prometheus.yml <<'PROM'
+            global:
+              scrape_interval: 15s
+            scrape_configs:
+              - job_name: "prometheus"
+                static_configs:
+                  - targets: ["prometheus:9090"]
+            PROM
+                  fi
+
+                  if [ -d /home/ubuntu/config/grafana-datasources.yml ]; then
+                    sudo rm -rf /home/ubuntu/config/grafana-datasources.yml
+                  fi
+                  if [ ! -f /home/ubuntu/config/grafana-datasources.yml ]; then
+                    # minimal fallback if copy failed
+                    cat >/home/ubuntu/config/grafana-datasources.yml <<'GRAF'
+            apiVersion: 1
+            datasources:
+              - name: Prometheus
+                type: prometheus
+                access: proxy
+                url: http://prometheus:9090
+                isDefault: true
+                editable: true
+            GRAF
+                  fi
+
+                  # --- Compose env for variable expansion ---
+                  cat >/home/ubuntu/.env <<EOF
             AWS_ACCOUNT_ID=${AWS_ACCOUNT_ID}
             AWS_REGION=${AWS_REGION}
             OPENAI_API_KEY=${OPENAI_API_KEY:-}
+            GITHUB_TOKEN=${GITHUB_TOKEN:-}
+            GITHUB_OWNER=${GITHUB_OWNER:-}
+            GITHUB_REPO=${GITHUB_REPO:-}
             EOF
 
-            echo "Using image: ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/release-readiness-advisor/backend:latest"
+                  echo "Using image: ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/release-readiness-advisor/backend:latest"
+                  ls -l /home/ubuntu/config || true
+                  file /home/ubuntu/config/prometheus.yml || true
 
-            # ---------- Deploy ----------
-            docker compose pull
-            docker compose up -d --force-recreate --remove-orphans
+                  # --- Deploy ---
+                  docker compose pull
+                  docker compose up -d --force-recreate --remove-orphans
