@@ -43,7 +43,8 @@ jobs:
       - name: Build, tag, and push image to Amazon ECR
         id: build-image
         run: |
-          docker build -t $ECR_REPOSITORY:latest -t $ECR_REPOSITORY:${{ github.sha }} ./apps/backend
+          # This command is corrected
+          docker build -t $ECR_REPOSITORY:latest -t $ECR_REPOSITORY:${{ github.sha }} -f ./apps/backend/Dockerfile .
           docker push $ECR_REPOSITORY --all-tags
 
   deploy-to-ec2:
