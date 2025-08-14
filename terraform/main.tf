@@ -166,57 +166,90 @@ resource "aws_iam_policy" "github_actions_policy" {
   description = "Policy for the Release Readiness Advisor GitHub Actions"
 
   policy = jsonencode({
-    Version = "2012-10-17"
+    Version = "2012-10-17",
     Statement = [
+      # --- S3: artifacts bucket ---
       {
-        Effect = "Allow"
-        Action = [
-          "s3:GetObject",
-          "s3:PutObject",
-          "s3:ListBucket"
-        ]
-        Resource = [
-          aws_s3_bucket.artifacts.arn,
-          "${aws_s3_bucket.artifacts.arn}/*"
-        ]
+        Effect   = "Allow",
+        Action   = ["s3:ListBucket", "s3:GetBucketVersioning", "s3:GetBucketPolicy"],
+        Resource = "arn:aws:s3:::release-advisor-artifacts-${random_pet.suffix.id}"
       },
       {
-        Effect = "Allow"
-        Action = [
-          "ecr:GetAuthorizationToken"
-        ]
+        Effect   = "Allow",
+        Action   = ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"],
+        Resource = "arn:aws:s3:::release-advisor-artifacts-${random_pet.suffix.id}/*"
+      },
+
+      # --- S3: terraform state bucket ---
+      {
+        Effect   = "Allow",
+        Action   = ["s3:ListBucket", "s3:GetBucketVersioning", "s3:GetBucketPolicy"],
+        Resource = "arn:aws:s3:::release-advisor-terra-state"
+      },
+      {
+        Effect   = "Allow",
+        Action   = ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"],
+        Resource = "arn:aws:s3:::release-advisor-terra-state/*"
+      },
+
+      # --- ECR (push + describe) ---
+      {
+        Effect   = "Allow",
+        Action   = ["ecr:GetAuthorizationToken"],
         Resource = "*"
       },
       {
-        Effect = "Allow"
+        Effect = "Allow",
         Action = [
+          "ecr:DescribeRepositories",
           "ecr:BatchCheckLayerAvailability",
           "ecr:InitiateLayerUpload",
           "ecr:UploadLayerPart",
           "ecr:CompleteLayerUpload",
           "ecr:PutImage"
-        ]
+        ],
         Resource = aws_ecr_repository.advisor_backend.arn
       },
+
+      # --- EC2 (key pair + security group + describes) ---
       {
         Effect = "Allow",
         Action = [
-          "s3:ListBucket",
-          "s3:GetBucketVersioning"
+          "ec2:DescribeKeyPairs",
+          "ec2:CreateKeyPair",
+          "ec2:DeleteKeyPair",
+          "ec2:DescribeSecurityGroups",
+          "ec2:CreateSecurityGroup",
+          "ec2:DeleteSecurityGroup",
+          "ec2:AuthorizeSecurityGroupIngress",
+          "ec2:AuthorizeSecurityGroupEgress",
+          "ec2:RevokeSecurityGroupIngress",
+          "ec2:RevokeSecurityGroupEgress",
+          "ec2:DescribeVpcs",
+          "ec2:DescribeSubnets"
         ],
-        Resource = "arn:aws:s3:::release-advisor-terra-state"
+        Resource = "*"
       },
+
+      # --- IAM (OIDC data source + crear role/policy que declaras) ---
       {
         Effect = "Allow",
         Action = [
-          "s3:GetObject",
-          "s3:PutObject",
-          "s3:DeleteObject"
+          "iam:ListOpenIDConnectProviders",
+          "iam:GetOpenIDConnectProvider",
+          "iam:CreateRole",
+          "iam:DeleteRole",
+          "iam:AttachRolePolicy",
+          "iam:DetachRolePolicy",
+          "iam:UpdateAssumeRolePolicy",
+          "iam:CreatePolicy",
+          "iam:DeletePolicy"
         ],
-        Resource = "arn:aws:s3:::release-advisor-terra-state/*"
+        Resource = "*"
       }
     ]
   })
+
 }
 
 # Define the IAM role that GitHub Actions will assume
