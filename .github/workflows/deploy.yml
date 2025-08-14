@@ -67,13 +67,42 @@ jobs:
         working-directory: ./terraform
         run: terraform apply -auto-approve -no-color
 
-      - name: Read Terraform outputs (robust)
+      - name: Read Terraform outputs (robust with fallbacks)
         id: tf
         shell: bash
         working-directory: ./terraform
         run: |
           set -euo pipefail
-          ip="$(terraform -no-color output -raw ec2_public_ip)"
+
+          # 1) Try raw output
+          ip="$(terraform -no-color output -raw ec2_public_ip 2>/dev/null || true)"
+
+          # 2) Fallback: JSON output + jq
+          if [[ -z "${ip}" ]]; then
+            if ! command -v jq >/dev/null 2>&1; then
+              sudo apt-get update -y && sudo apt-get install -y jq
+            fi
+            json="$(terraform -no-color output -json 2>/dev/null || true)"
+            if [[ -n "${json}" ]]; then
+              ip="$(printf '%s' "$json" | jq -r '.ec2_public_ip.value // empty')"
+            fi
+          fi
+
+          # 3) Fallback: query AWS by tag if Terraform output is empty (instance replaced/changed)
+          if [[ -z "${ip}" ]]; then
+            region="${{ secrets.AWS_REGION }}"
+            ip="$(aws ec2 describe-instances \
+                  --region "$region" \
+                  --filters 'Name=tag:Name,Values=Release-Advisor-Server' 'Name=instance-state-name,Values=running' \
+                  --query 'Reservations[].Instances[].PublicIpAddress' \
+                  --output text 2>/dev/null | head -n1 | xargs || true)"
+          fi
+
+          if [[ -z "${ip}" ]]; then
+            echo "Could not determine EC2 public IP via Terraform or AWS CLI" >&2
+            exit 1
+          fi
+
           echo "ip=$ip" >> "$GITHUB_OUTPUT"
 
       # Copy docker-compose file to the instance
