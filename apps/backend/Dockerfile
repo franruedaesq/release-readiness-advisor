@@ -6,13 +6,14 @@ RUN npm install -g pnpm
 
 COPY package.json pnpm-lock.yaml ./
 
-RUN pnpm install
+RUN pnpm recursive install
 
 COPY . .
 
-ENV PATH /app/node_modules/.bin:$PATH
+ENV PATH=/app/node_modules/.bin:$PATH
 
 RUN pnpm --filter backend build
+
 
 FROM node:20-slim
 
@@ -22,7 +23,7 @@ RUN npm install -g pnpm
 
 COPY package.json pnpm-lock.yaml ./
 
-RUN pnpm install --prod
+RUN pnpm recursive install --prod
 
 COPY --from=builder /app/apps/backend/dist ./apps/backend/dist
 
