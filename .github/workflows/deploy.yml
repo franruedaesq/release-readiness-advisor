@@ -2,14 +2,11 @@ name: Deploy Release Advisor
 
 on:
   push:
-    branches:
-      - main
+    branches: [main]
   workflow_dispatch:
 
-# Get values from Terraform outputs to use in the workflow
 env:
   ECR_REPOSITORY: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/release-readiness-advisor/backend
-  EC2_HOST: ${{ secrets.EC2_PUBLIC_IP }} # We will set this secret later
 
 jobs:
   build-and-push-image:
@@ -20,18 +17,10 @@ jobs:
       contents: read
 
     steps:
-      - name: Checkout repository
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Debug OIDC token (aud/sub)
-        run: |
-          set -euo pipefail
-          jwt=$(curl -sLS "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=sts.amazonaws.com" \
-            -H "Authorization: Bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}" | jq -r .value)
-          # Evita que falle por padding:
-          echo "$jwt" | cut -d '.' -f2 | base64 -di 2>/dev/null | jq -r '{aud, sub}' || true
-
-      - name: Configure AWS credentials
+      - name: Configure AWS credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
@@ -40,12 +29,11 @@ jobs:
       - name: Log in to Amazon ECR
         uses: aws-actions/amazon-ecr-login@v2
 
-      - name: Build, tag, and push image to Amazon ECR
-        id: build-image
+      - name: Build & push image
         run: |
-          # This command is corrected
-          docker build -t $ECR_REPOSITORY:latest -t $ECR_REPOSITORY:${{ github.sha }} -f ./apps/backend/Dockerfile .
-          docker push $ECR_REPOSITORY --all-tags
+          set -euo pipefail
+          docker build -t "$ECR_REPOSITORY:latest" -t "$ECR_REPOSITORY:${{ github.sha }}" -f ./apps/backend/Dockerfile .
+          docker push "$ECR_REPOSITORY" --all-tags
 
   deploy-to-ec2:
     name: Deploy to EC2
@@ -56,13 +44,16 @@ jobs:
       contents: read
 
     steps:
-      - name: Checkout repository
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up Terraform
-        uses: hashicorp/setup-terraform@v2
+      - name: Setup Terraform (disable wrapper)
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.6.6
+          terraform_wrapper: false
 
-      - name: Configure AWS credentials
+      - name: Configure AWS credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
@@ -70,32 +61,62 @@ jobs:
 
       - name: Terraform Init
         working-directory: ./terraform
-        run: terraform init
+        run: terraform init -no-color
 
       - name: Terraform Apply
         working-directory: ./terraform
-        run: terraform apply -auto-approve
+        run: terraform apply -auto-approve -no-color
 
-      - name: Get EC2 Public IP from Terraform Output
-        id: terraform-output
+      - name: Read Terraform outputs (robust)
+        id: tf
+        shell: bash
         working-directory: ./terraform
-        run: echo "ip=$(terraform output -raw ec2_public_ip)" >> $GITHUB_OUTPUT
+        run: |
+          set -euo pipefail
+          ip="$(terraform -no-color output -raw ec2_public_ip)"
+          echo "ip=$ip" >> "$GITHUB_OUTPUT"
 
-      - name: Deploy to EC2 instance via SSH
-        uses: appleboy/ssh-action@v1.0.3
+      # Copy docker-compose file to the instance
+      - name: Copy docker-compose to EC2
+        uses: appleboy/scp-action@v0.1.7
         with:
-          host: ${{ steps.terraform-output.outputs.ip }}
+          host: ${{ steps.tf.outputs.ip }}
           username: ubuntu
           key: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
+          source: "docker-compose.prod.yml"
+          target: "/home/ubuntu/docker-compose.yml"
+          overwrite: true
+
+      # Run remote commands on the instance
+      - name: Deploy on EC2 via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ steps.tf.outputs.ip }}
+          username: ubuntu
+          key: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
+          script_stop: true
           script: |
-            # Login to ECR on the EC2 instance
-            aws ecr get-login-password --region ${{ secrets.AWS_REGION }} | docker login --username AWS --password-stdin ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com
+            set -euo pipefail
 
-            # Copy the latest docker-compose file to the EC2 instance
-            # Note: For this to work, docker-compose.prod.yml must be in the repo
-            scp -o StrictHostKeyChecking=no docker-compose.prod.yml ubuntu@${{ steps.terraform-output.outputs.ip }}:~/docker-compose.yml
+            # Ensure AWS CLI exists (needed to login to ECR)
+            if ! command -v aws >/dev/null 2>&1; then
+              sudo apt-get update -y
+              sudo apt-get install -y awscli
+            fi
 
-            # Pull the new image and restart the services
-            cd ~
-            docker-compose pull
-            docker-compose up -d --force-recreate
+            # Login to ECR (instance must have IAM role with ECR read or credentials configured)
+            aws ecr get-login-password --region "${{ secrets.AWS_REGION }}" \
+              | docker login --username AWS --password-stdin "${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com"
+
+            # Make sure docker compose is available (plugin form)
+            if ! docker compose version >/dev/null 2>&1; then
+              echo "Docker Compose plugin not found. Installing..."
+              sudo apt-get update -y
+              sudo apt-get install -y docker-compose-plugin
+            fi
+
+            # Pull and (re)start
+            cd /home/ubuntu
+            sudo chown ubuntu:ubuntu docker-compose.yml || true
+            docker compose pull
+            docker compose up -d --force-recreate
