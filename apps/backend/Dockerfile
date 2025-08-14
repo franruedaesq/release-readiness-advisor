@@ -10,9 +10,7 @@ RUN pnpm recursive install
 
 COPY . .
 
-ENV PATH=/app/node_modules/.bin:$PATH
-
-RUN pnpm --filter backend build
+RUN pnpm exec nest build backend
 
 
 FROM node:20-slim
