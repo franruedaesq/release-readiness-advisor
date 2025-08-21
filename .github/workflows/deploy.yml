@@ -240,6 +240,20 @@ jobs:
             ls -l /home/ubuntu/config || true
             file /home/ubuntu/config/prometheus.yml || true
 
+            echo "Creating .env file..."
+            cat >/home/ubuntu/.env <<EOF
+            # Variables for the application
+            OPENAI_API_KEY=${OPENAI_API_KEY}
+            GITHUB_TOKEN=${GITHUB_TOKEN}
+            GITHUB_OWNER=${GITHUB_OWNER}
+            GITHUB_REPO=${GITHUB_REPO}
+
+            # Variables for docker-compose to use for the image path
+            AWS_ACCOUNT_ID=${AWS_ACCOUNT_ID}
+            AWS_REGION=${AWS_REGION}
+            EOF
+            echo ".env file created successfully."
+
             docker compose down -v --remove-orphans || true
             docker compose pull
             docker compose up -d --force-recreate --remove-orphans
