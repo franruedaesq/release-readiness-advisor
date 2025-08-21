@@ -38,7 +38,7 @@ export default function HomePage() {
 
     try {
       const response = await axios.post(
-        "http://localhost:3002/api/v2/analysis/run",
+        "http://54.242.153.126:3002/api/v2/analysis/run",
         {
           task: selectedTask,
           model: selectedModel,

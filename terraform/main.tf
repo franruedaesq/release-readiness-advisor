@@ -117,6 +117,12 @@ resource "aws_instance" "app_server" {
   key_name             = aws_key_pair.kp.key_name
   security_groups      = [aws_security_group.release_advisor_sg.name]
   iam_instance_profile = aws_iam_instance_profile.ec2_profile.name
+  root_block_device {
+    volume_size           = 30
+    volume_type           = "gp3"
+    delete_on_termination = true
+    encrypted             = true
+  }
   # Startup script to install Docker and Docker Compose
   user_data = <<-EOF
               #!/bin/bash
