@@ -7,6 +7,7 @@ async function bootstrap() {
     origin: [
       'https://release-readiness-advisor-t75bb6ntc-francisco-ruedas-projects.vercel.app',
       'http://localhost:3001',
+      'https://release-readiness-advisor-ui.vercel.app',
     ],
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
     credentials: true,
