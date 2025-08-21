@@ -234,6 +234,7 @@ jobs:
             GITHUB_TOKEN=${GITHUB_TOKEN:-}
             GITHUB_OWNER=${GITHUB_OWNER:-}
             GITHUB_REPO=${GITHUB_REPO:-}
+            CHROMA_URL=http://chromadb:8000
             EOF
 
             echo "Using image: ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/release-readiness-advisor/backend:latest"
