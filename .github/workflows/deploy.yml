@@ -166,8 +166,8 @@ jobs:
           AWS_DEFAULT_REGION: ${{ secrets.AWS_REGION }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GITHUB_OWNER: ${{ secrets.GITHUB_OWNER }}
-          GITHUB_REPO: ${{ secrets.GITHUB_REPO }}
+          GITHUB_OWNER: ${{ secrets.TARGET_GITHUB_OWNER }}
+          GITHUB_REPO: ${{ secrets.TARGET_GITHUB_REPO }}
         with:
           host: ${{ steps.tf.outputs.ip }}
           username: ubuntu
