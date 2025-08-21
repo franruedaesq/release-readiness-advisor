@@ -37,13 +37,10 @@ export default function HomePage() {
     setError("");
 
     try {
-      const response = await axios.post(
-        "http://54.242.153.126:3002/api/v2/analysis/run",
-        {
-          task: selectedTask,
-          model: selectedModel,
-        }
-      );
+      const response = await axios.post("/api/analysis", {
+        task: selectedTask,
+        model: selectedModel,
+      });
 
       const newResult: AnalysisResult = {
         id: `run-${results.length + 1}`,
