@@ -240,5 +240,6 @@ jobs:
             ls -l /home/ubuntu/config || true
             file /home/ubuntu/config/prometheus.yml || true
 
+            docker compose down -v --remove-orphans || true
             docker compose pull
             docker compose up -d --force-recreate --remove-orphans
