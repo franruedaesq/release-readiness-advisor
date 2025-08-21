@@ -279,6 +279,11 @@ export class IntelService {
       };
     }
 
+    this.metricsService.ragChunksTotal.inc(
+      { source: 'github_artifacts' },
+      docs.length,
+    );
+
     await this.vectorizeAndStore(collection, docs);
     return { success: true, runId: workflowRun.id };
   }

@@ -85,6 +85,11 @@ export class AgentOrchestratorService {
     state: typeof AgentState.State,
   ): Promise<Partial<typeof AgentState.State>> {
     this.logger.log(`Node: retrieve_context for runId ${state.runId}`);
+
+    const retrievalTimer = this.metricsService.ragRetrievalDuration.startTimer({
+      agent: 'orchestrator',
+    });
+
     const collection = await this.chroma.getOrCreateCollection({
       name: 'release_artifacts',
       embeddingFunction: this.embeddingFunction,
@@ -95,6 +100,8 @@ export class AgentOrchestratorService {
       nResults: 5,
       where: { runId: state.runId },
     });
+
+    retrievalTimer();
 
     const context = results.documents[0].join('\n\n---\n\n');
     return { context };
@@ -119,8 +126,12 @@ export class AgentOrchestratorService {
     if (usage) {
       this.metricsService.recordLlmUsage(
         {
-          promptTokens: usage.input_tokens,
-          completionTokens: usage.output_tokens,
+          promptTokens:
+            usage.input_tokens ||
+            response.response_metadata?.tokenUsage?.promptTokens,
+          completionTokens:
+            usage.output_tokens ||
+            response.response_metadata?.tokenUsage?.completionTokens,
         },
         'risk_agent',
         config.configurable.model,
@@ -148,8 +159,12 @@ export class AgentOrchestratorService {
     if (usage) {
       this.metricsService.recordLlmUsage(
         {
-          promptTokens: usage.input_tokens,
-          completionTokens: usage.output_tokens,
+          promptTokens:
+            usage.input_tokens ||
+            response.response_metadata?.tokenUsage?.promptTokens,
+          completionTokens:
+            usage.output_tokens ||
+            response.response_metadata?.tokenUsage?.completionTokens,
         },
         'ops_agent',
         config.configurable.model,
@@ -184,8 +199,12 @@ export class AgentOrchestratorService {
     if (usage) {
       this.metricsService.recordLlmUsage(
         {
-          promptTokens: usage.input_tokens,
-          completionTokens: usage.output_tokens,
+          promptTokens:
+            usage.input_tokens ||
+            response.response_metadata?.tokenUsage?.promptTokens,
+          completionTokens:
+            usage.output_tokens ||
+            response.response_metadata?.tokenUsage?.completionTokens,
         },
         'writer_agent',
         config.configurable.model,
