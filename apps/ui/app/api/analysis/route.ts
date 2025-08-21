@@ -14,16 +14,17 @@ export async function POST(request: Request) {
     );
 
     return NextResponse.json({ report: backendResponse.data.report });
-  } catch (error) {
+  } catch (error: unknown) {
     console.error("API Route Error:", error);
     let status = 500;
     if (
       typeof error === "object" &&
       error !== null &&
       "response" in error &&
-      typeof (error as any).response?.status === "number"
+      typeof (error as { response?: { status?: number } }).response?.status ===
+        "number"
     ) {
-      status = (error as any).response.status;
+      status = (error as { response: { status: number } }).response.status;
     }
     return NextResponse.json(
       { message: "Error forwarding request to backend." },
