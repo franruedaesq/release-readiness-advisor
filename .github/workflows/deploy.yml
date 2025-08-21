@@ -211,49 +211,45 @@ jobs:
 
             cd /home/ubuntu
 
-            # Si quedó un directorio con ese nombre, límpialo
-            if [ -d /home/ubuntu/docker-compose.yml ]; then
-              sudo rm -rf /home/ubuntu/docker-compose.yml
-            fi
-
-            # Deja compose en su nombre final
-            if [ -f /home/ubuntu/docker-compose.prod.yml ]; then
-              mv -f /home/ubuntu/docker-compose.prod.yml /home/ubuntu/docker-compose.yml
-            fi
+            # Asegura archivo compose
+            [ -d /home/ubuntu/docker-compose.yml ] && sudo rm -rf /home/ubuntu/docker-compose.yml
+            [ -f /home/ubuntu/docker-compose.prod.yml ] && mv -f /home/ubuntu/docker-compose.prod.yml /home/ubuntu/docker-compose.yml
             sudo chown ubuntu:ubuntu /home/ubuntu/docker-compose.yml || true
 
             # Asegura que los archivos de config estén como ARCHIVOS
-            if [ -d /home/ubuntu/config/prometheus.yml ]; then sudo rm -rf /home/ubuntu/config/prometheus.yml; fi
-            if [ -d /home/ubuntu/config/grafana-datasources.yml ]; then sudo rm -rf /home/ubuntu/config/grafana-datasources.yml; fi
+            [ -d /home/ubuntu/config/prometheus.yml ] && sudo rm -rf /home/ubuntu/config/prometheus.yml
+            [ -d /home/ubuntu/config/grafana-datasources.yml ] && sudo rm -rf /home/ubuntu/config/grafana-datasources.yml
 
-            # .env para expansión en compose
-            cat >/home/ubuntu/.env <<EOF
-            AWS_ACCOUNT_ID=${AWS_ACCOUNT_ID}
-            AWS_REGION=${AWS_REGION}
-            OPENAI_API_KEY=${OPENAI_API_KEY:-}
-            GITHUB_TOKEN=${GITHUB_TOKEN:-}
-            GITHUB_OWNER=${GITHUB_OWNER:-}
-            GITHUB_REPO=${GITHUB_REPO:-}
-            EOF
+            echo "Creating .env file (no heredoc)..."
+            : >/home/ubuntu/.env
+            # Genera .env con printf/printenv para evitar prefijos del wrapper
+            for k in OPENAI_API_KEY GITHUB_TOKEN GITHUB_OWNER GITHUB_REPO AWS_ACCOUNT_ID AWS_REGION; do
+              v="$(printenv "$k" || true)"
+              # No imprimas secretos; sólo escribe al archivo
+              printf '%s=%s\n' "$k" "$v" >> /home/ubuntu/.env
+            done
+            chmod 600 /home/ubuntu/.env
+            echo ".env file created."
+
+            # Validación (sin exponer valores)
+            missing=0
+            for k in OPENAI_API_KEY GITHUB_OWNER GITHUB_REPO AWS_ACCOUNT_ID AWS_REGION; do
+              if [ -z "$(grep -E "^${k}=" /home/ubuntu/.env | cut -d= -f2-)" ]; then
+                echo "WARN: ${k} is empty in /home/ubuntu/.env" >&2
+                missing=1
+              fi
+            done
+            if [ "$missing" -ne 0 ]; then
+              echo "One or more required variables are empty. Check GitHub Secrets names and the 'envs:' list." >&2
+              # Si prefieres no bloquear el despliegue, comenta la siguiente línea
+              # exit 1
+            fi
 
             echo "Using image: ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/release-readiness-advisor/backend:latest"
             ls -l /home/ubuntu/config || true
             file /home/ubuntu/config/prometheus.yml || true
 
-            echo "Creating .env file..."
-            cat >/home/ubuntu/.env <<EOF
-            # Variables for the application
-            OPENAI_API_KEY=${OPENAI_API_KEY}
-            GITHUB_TOKEN=${GITHUB_TOKEN}
-            GITHUB_OWNER=${GITHUB_OWNER}
-            GITHUB_REPO=${GITHUB_REPO}
-
-            # Variables for docker-compose to use for the image path
-            AWS_ACCOUNT_ID=${AWS_ACCOUNT_ID}
-            AWS_REGION=${AWS_REGION}
-            EOF
-            echo ".env file created successfully."
-
+            # Limpieza y despliegue
             docker compose down -v --remove-orphans || true
             docker compose pull
             docker compose up -d --force-recreate --remove-orphans
