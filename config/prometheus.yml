@@ -10,7 +10,7 @@ scrape_configs:
     static_configs:
       # Use this special hostname to allow the Docker container
       # to connect to a service running on your host machine.
-      - targets: ["host.docker.internal:3002"]
+      - targets: ["backend:3002"]
 
   - job_name: "pushgateway"
     honor_labels: true # Important: allows jobs to set their own labels

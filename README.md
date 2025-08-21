@@ -7,7 +7,7 @@
 ## 🔗 Live Demo
 
 - **Frontend UI (Vercel):** `https://release-readiness-advisor-ui.vercel.app`
-- **Grafana Dashboards (EC2):** `http://54.242.153.126:3000` (Login: admin/bygzyv-teTfyd-7kohme)
+- **Grafana Dashboards (EC2):** `http://54.242.153.126:3000` (Login: admin/qysRoh-bofjym-wydho3)
 
 ---
 
