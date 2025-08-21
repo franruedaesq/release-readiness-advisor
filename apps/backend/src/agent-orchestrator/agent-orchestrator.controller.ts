@@ -8,6 +8,7 @@ import {
 } from '@nestjs/common';
 import { AgentOrchestratorService } from './agent-orchestrator.service';
 import { IntelService } from '../intel/intel.service';
+import { MetricsService } from 'src/metrics/metrics.service';
 
 // DTO to validate the incoming request body
 class RunAnalysisDto {
@@ -22,6 +23,7 @@ export class AgentOrchestratorController {
   constructor(
     private readonly intelService: IntelService,
     private readonly agentOrchestratorService: AgentOrchestratorService,
+    private readonly metricsService: MetricsService,
   ) {}
 
   @Post('run')
@@ -29,10 +31,15 @@ export class AgentOrchestratorController {
   async runV2Analysis(
     @Body() body: RunAnalysisDto,
   ): Promise<{ report: string }> {
+    const endTimer = this.metricsService.agentDuration.startTimer({
+      agent: 'intel_orchestrator',
+    });
+    this.metricsService.agentInvocations.inc({ agent: 'intel_orchestrator' });
     const { task, model } = body;
 
     const ingestionResult = await this.intelService.runIngestion();
     if (!ingestionResult.success) {
+      endTimer();
       return { report: `# Ingestion Failed\n\n${ingestionResult.message}` };
     }
     if (typeof ingestionResult.runId !== 'number') {
@@ -47,6 +54,7 @@ export class AgentOrchestratorController {
       task, // Pass the task
       model, // Pass the model
     );
+    endTimer();
     return { report };
   }
 }
